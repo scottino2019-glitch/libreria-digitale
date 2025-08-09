@@ -1,186 +1,353 @@
 <!DOCTYPE html>
 <html lang="it">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>La Tua Libreria Digitale</title>
-<script src="https://cdn.tailwindcss.com"></script>
-<script src="https://kit.fontawesome.com/a2e0e6ad0f.js" crossorigin="anonymous"></script>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Libreria Deluxe</title>
+<link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+<script src="https://unpkg.com/@supabase/supabase-js@2"></script>
 <style>
-  .book-card {
-    height: 12rem;
-    width: 8rem;
-    background-color: #6a493a;
-    color: white;
-    padding: 0.5rem;
-    border-radius: 8px;
-    box-shadow: 2px 2px 5px rgba(0,0,0,0.3);
-    cursor: pointer;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    align-items: center;
-    transition: all 0.2s ease-in-out;
+  :root{
+    --wood:#5b3a29;
+    --shelf:#d9b99b;
+    --paper:#fff7ed;
+    --accent:#8b5e3c;
   }
-  .book-card:hover {
-    transform: translateY(-5px) scale(1.05);
-    box-shadow: 5px 5px 15px rgba(0,0,0,0.5);
+  body{
+    background: linear-gradient(180deg,#f7efe6 0%, #efe6d9 100%);
+    font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+    -webkit-font-smoothing:antialiased;
+    -moz-osx-font-smoothing:grayscale;
+    padding:20px;
+  }
+  .shelf {
+    background: linear-gradient(180deg,var(--shelf), #c79e78);
+    border-bottom: 8px solid rgba(0,0,0,0.08);
+    padding:16px;
+    border-radius:10px;
+    box-shadow: 0 8px 20px rgba(0,0,0,0.08);
+  }
+  .book {
+    width:120px;
+    height:170px;
+    background: linear-gradient(180deg,var(--wood), #4a2f23);
+    color:white;
+    border-radius:6px;
+    padding:10px;
+    box-shadow: 0 6px 14px rgba(0,0,0,0.15);
+    display:flex;
+    flex-direction:column;
+    justify-content:center;
+    align-items:center;
+    position:relative;
+    cursor:pointer;
+    transform-origin:center;
+    transition: transform .18s ease, box-shadow .18s ease;
+  }
+  .book:hover{ transform: translateY(-6px) scale(1.03); box-shadow:0 10px 30px rgba(0,0,0,0.18); }
+  .book .title{ font-weight:700; font-size:0.9rem; text-align:center; line-height:1.1; }
+  .book .author{ font-size:0.75rem; opacity:0.9; margin-top:6px; }
+  .book .spine {
+    position:absolute;
+    left:6px;
+    top:8px;
+    bottom:8px;
+    width:18px;
+    background: linear-gradient(180deg,#7b4a36,#4f2a20);
+    border-radius:3px;
+    transform:rotate(-6deg);
+  }
+  /* UI small */
+  .container{ max-width:1100px; margin:0 auto; }
+  .card{ background:var(--paper); border-radius:12px; padding:16px; box-shadow: 0 8px 24px rgba(0,0,0,0.06); }
+  .btn{ padding:8px 12px; border-radius:8px; font-weight:600; }
+  .toast{ position:fixed; right:20px; bottom:20px; background:#111827; color:white; padding:10px 14px; border-radius:8px; box-shadow:0 8px 20px rgba(0,0,0,0.3); display:none; z-index:9999; }
+  /* responsive */
+  @media (max-width:768px){
+    .book{ width:100px; height:150px; }
+    .container{ padding:8px; }
   }
 </style>
 </head>
-<body class="bg-gray-100 min-h-screen p-4">
-<div id="auth-section" class="max-w-sm mx-auto bg-white p-6 rounded-xl shadow-lg mt-10">
-  <h1 class="text-2xl font-bold text-center mb-4">La Tua Libreria Digitale</h1>
-  <div id="auth-status" class="mb-4 text-center text-blue-500">Stato: Non autenticato</div>
-  <input id="email" type="email" placeholder="Email" class="w-full mb-2 p-2 border rounded">
-  <input id="password" type="password" placeholder="Password" class="w-full mb-4 p-2 border rounded">
-  <div class="flex justify-between">
-    <button id="login-btn" class="bg-green-500 text-white px-4 py-2 rounded">Accedi</button>
-    <button id="register-btn" class="bg-blue-500 text-white px-4 py-2 rounded">Registrati</button>
+<body>
+<div class="container">
+  <header class="mb-6 flex flex-col md:flex-row items-center justify-between gap-4">
+    <h1 class="text-3xl font-extrabold text-amber-800">📚 Libreria Deluxe</h1>
+    <div id="auth-area" class="flex items-center gap-3">
+      <div id="auth-status" class="text-sm text-gray-700">Non autenticato</div>
+      <button id="logout-btn" class="btn bg-red-600 text-white hidden">Logout</button>
+    </div>
+  </header>
+
+  <main class="grid grid-cols-1 md:grid-cols-3 gap-6">
+    <!-- left: auth / add -->
+    <section class="card md:col-span-1">
+      <div id="auth-panel">
+        <h2 class="text-xl font-semibold mb-2">Accesso / Registrazione</h2>
+        <form id="auth-form" class="space-y-2">
+          <input id="email" type="email" placeholder="Email" class="w-full p-2 border rounded" required>
+          <input id="password" type="password" placeholder="Password" class="w-full p-2 border rounded" required>
+          <div class="flex gap-2 mt-2">
+            <button id="login-btn" class="btn bg-green-600 text-white">Accedi</button>
+            <button id="signup-btn" class="btn bg-blue-600 text-white" type="button">Registrati</button>
+          </div>
+        </form>
+        <p id="signup-info" class="mt-2 text-sm text-gray-600"></p>
+      </div>
+
+      <div id="actions" class="mt-6 hidden">
+        <h3 class="font-semibold mb-2">Azione</h3>
+        <input id="search" placeholder="Cerca titolo o autore..." class="w-full p-2 border rounded mb-2">
+        <div class="flex gap-2">
+          <button id="add-btn" class="btn bg-amber-600 text-white">+ Nuovo libro</button>
+          <button id="refresh-btn" class="btn bg-gray-200">Aggiorna</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- main shelves -->
+    <section class="md:col-span-2">
+      <div class="shelf card">
+        <div class="flex items-center justify-between mb-4">
+          <div>
+            <h2 class="text-2xl font-bold text-amber-900">La tua collezione</h2>
+            <p class="text-sm text-gray-700">Libri personali ordinati alfabeticamente</p>
+          </div>
+          <div class="text-sm text-gray-600">Utente: <span id="user-id" class="font-mono"></span></div>
+        </div>
+
+        <div id="books-grid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4"></div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<!-- Modale lettura -->
+<div id="read-modal" class="fixed inset-0 bg-black bg-opacity-60 hidden items-center justify-center p-4 z-50">
+  <div class="bg-white rounded-lg max-w-3xl w-full p-6">
+    <div class="flex justify-between items-start">
+      <div>
+        <h3 id="read-title" class="text-2xl font-bold"></h3>
+        <p id="read-author" class="text-sm text-gray-600"></p>
+      </div>
+      <div class="flex gap-2">
+        <button id="edit-from-read" class="btn bg-yellow-500">✏️ Modifica</button>
+        <button id="delete-from-read" class="btn bg-red-500 text-white">🗑️ Elimina</button>
+        <button id="close-read" class="btn bg-gray-200">Chiudi</button>
+      </div>
+    </div>
+    <hr class="my-4">
+    <div id="read-content" class="prose max-h-96 overflow-auto whitespace-pre-wrap"></div>
   </div>
 </div>
 
-<div id="library-section" class="hidden max-w-4xl mx-auto mt-6">
-  <div class="flex justify-between items-center mb-4">
-    <input id="search-bar" type="text" placeholder="Cerca libro..." class="p-2 border rounded w-2/3">
-    <button id="add-book-btn" class="bg-blue-500 text-white px-4 py-2 rounded">Aggiungi Libro</button>
-    <button id="logout-btn" class="bg-red-500 text-white px-4 py-2 rounded">Logout</button>
-  </div>
-  <div id="books-list" class="grid grid-cols-2 md:grid-cols-4 gap-4"></div>
-</div>
-
-<div id="form-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center p-4">
-  <div class="bg-white rounded-lg p-6 w-full max-w-md">
-    <h2 id="modal-title" class="text-xl font-bold mb-4">Aggiungi Libro</h2>
-    <input id="book-title" placeholder="Titolo" class="w-full mb-2 p-2 border rounded">
-    <input id="book-author" placeholder="Autore" class="w-full mb-2 p-2 border rounded">
-    <textarea id="book-content" placeholder="Contenuto" class="w-full mb-4 p-2 border rounded"></textarea>
-    <div class="flex justify-between">
-      <button id="save-book-btn" class="bg-green-500 text-white px-4 py-2 rounded">Salva</button>
-      <button id="close-modal-btn" class="bg-gray-400 text-white px-4 py-2 rounded">Chiudi</button>
+<!-- Modale edit/add -->
+<div id="edit-modal" class="fixed inset-0 bg-black bg-opacity-60 hidden items-center justify-center p-4 z-50">
+  <div class="bg-white rounded-lg max-w-lg w-full p-6">
+    <h3 id="edit-title" class="text-xl font-bold mb-2">Aggiungi Libro</h3>
+    <input id="input-title" class="w-full p-2 border rounded mb-2" placeholder="Titolo">
+    <input id="input-author" class="w-full p-2 border rounded mb-2" placeholder="Autore">
+    <textarea id="input-content" class="w-full p-2 border rounded mb-2 h-40" placeholder="Contenuto/Descrizione"></textarea>
+    <div class="flex justify-end gap-2">
+      <button id="save-btn" class="btn bg-green-600 text-white">Salva</button>
+      <button id="cancel-edit" class="btn bg-gray-200">Annulla</button>
     </div>
   </div>
 </div>
 
-<script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+<!-- toast -->
+<div id="toast" class="toast"></div>
+
 <script>
-const SUPABASE_URL = 'https://ipdhzwkyzvpwtcoekhog.supabase.co';
-const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlwZGh6d2t5enZwd3Rjb2VraG9nIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQ3NDYyNzMsImV4cCI6MjA3MDMyMjI3M30.50O7BW_34dD9fcza9zDi5WuhW-r9EVinopMLOnhqQtA';
-const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+const SUPABASE_URL = "https://ipdhzwkyzvpwtcoekhog.supabase.co";
+const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlwZGh6d2t5enZwd3Rjb2VraG9nIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQ3NDYyNzMsImV4cCI6MjA3MDMyMjI3M30.50O7BW_34dD9fcza9zDi5WuhW-r9EVinopMLOnhqQtA";
 
-let editingBookId = null;
-let userId = null;
+const supabase = supabaseJs = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-// Login
-document.getElementById('login-btn').addEventListener('click', async (e) => {
-  e.preventDefault();
-  const email = document.getElementById('email').value;
-  const password = document.getElementById('password').value;
-  const { error } = await supabaseClient.auth.signInWithPassword({ email, password });
-  if (error) alert(error.message);
-  else console.log('Login effettuato');
-});
+let currentUserId = null;
+let realtimeSub = null;
+let currentOpenId = null;
 
-// Registrazione
-document.getElementById('register-btn').addEventListener('click', async (e) => {
-  e.preventDefault();
-  const email = document.getElementById('email').value;
-  const password = document.getElementById('password').value;
-  const { error } = await supabaseClient.auth.signUp({ email, password });
-  if (error) alert(error.message);
-  else console.log('Registrazione effettuata');
-});
+const $ = id => document.getElementById(id);
+const toast = msg => {
+  const t = $('toast');
+  t.textContent = msg;
+  t.style.display = 'block';
+  clearTimeout(t._timer);
+  t._timer = setTimeout(()=> t.style.display='none', 3000);
+};
 
-// Logout
-document.getElementById('logout-btn').addEventListener('click', async () => {
-  await supabaseClient.auth.signOut();
-  console.log('Logout effettuato');
-});
-
-// Stato auth
-supabaseClient.auth.onAuthStateChange((event, session) => {
-  if (session) {
-    userId = session.user.id;
-    document.getElementById('auth-section').classList.add('hidden');
-    document.getElementById('library-section').classList.remove('hidden');
-    fetchBooks();
-  } else {
-    userId = null;
-    document.getElementById('auth-section').classList.remove('hidden');
-    document.getElementById('library-section').classList.add('hidden');
-  }
-});
-
-// Mostra form aggiunta libro
-document.getElementById('add-book-btn').addEventListener('click', () => {
-  editingBookId = null;
-  document.getElementById('modal-title').innerText = 'Aggiungi Libro';
-  document.getElementById('book-title').value = '';
-  document.getElementById('book-author').value = '';
-  document.getElementById('book-content').value = '';
-  document.getElementById('form-modal').classList.remove('hidden');
-});
-
-// Chiudi modal
-document.getElementById('close-modal-btn').addEventListener('click', () => {
-  document.getElementById('form-modal').classList.add('hidden');
-});
-
-// Salva libro
-document.getElementById('save-book-btn').addEventListener('click', async () => {
-  const title = document.getElementById('book-title').value.trim();
-  const author = document.getElementById('book-author').value.trim();
-  const content = document.getElementById('book-content').value.trim();
-  if (!title || !author) {
-    alert('Titolo e autore sono obbligatori');
-    return;
-  }
-  if (editingBookId) {
-    await supabaseClient.from('books').update({ title, author, content }).eq('id', editingBookId);
-  } else {
-    await supabaseClient.from('books').insert([{ title, author, content, user_id: userId }]);
-  }
-  document.getElementById('form-modal').classList.add('hidden');
-  fetchBooks();
-});
-
-// Cerca libri
-document.getElementById('search-bar').addEventListener('input', fetchBooks);
-
-// Fetch libri
-async function fetchBooks() {
-  const searchTerm = document.getElementById('search-bar').value;
-  let query = supabaseClient.from('books').select('*').eq('user_id', userId).order('title', { ascending: true });
-  if (searchTerm) {
-    query = query.ilike('title', `%${searchTerm}%`);
-  }
-  const { data, error } = await query;
-  if (!error) renderBooks(data);
+async function signIn(email, password){
+  try{
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    if(error) { toast("Errore login: " + error.message); console.error(error); return; }
+    toast("Login effettuato");
+    console.log("login ok");
+  }catch(e){ console.error(e); toast("Errore imprevisto"); }
 }
 
-// Render libri
-function renderBooks(books) {
-  const container = document.getElementById('books-list');
-  container.innerHTML = '';
-  if (!books.length) {
-    container.innerHTML = '<div class="col-span-full text-center text-gray-500">Nessun libro trovato</div>';
+async function signUp(email, password){
+  try{
+    const { data, error } = await supabase.auth.signUp({ email, password });
+    if(error){ toast("Errore registrazione: " + error.message); console.error(error); return; }
+    toast("Registrazione avvenuta: controlla la tua email per conferma");
+    $('signup-info').textContent = "Registrazione avvenuta — controlla la tua email per confermare l'account.";
+    console.log("signup data:", data);
+  }catch(e){ console.error(e); toast("Errore imprevisto"); }
+}
+
+async function signOut(){
+  if(realtimeSub) { supabase.removeChannel(realtimeSub); realtimeSub = null; }
+  await supabase.auth.signOut();
+  toast("Logout effettuato");
+}
+
+async function fetchBooks(search=''){
+  if(!currentUserId) return;
+  try{
+    let q = supabase.from('books').select('*').eq('user_id', currentUserId).order('title', { ascending:true });
+    if(search && search.trim()!==''){
+      // search on title or author
+      q = q.or(`title.ilike.%${search}% , author.ilike.%${search}%`).order('title',{ascending:true});
+    }
+    const { data, error } = await q;
+    if(error){ console.error(error); toast("Errore caricamento libri"); return; }
+    renderGrid(data || []);
+  }catch(e){ console.error(e); }
+}
+
+function renderGrid(books){
+  const grid = $('books-grid');
+  grid.innerHTML = '';
+  if(!books.length){
+    const empty = document.createElement('div');
+    empty.className = 'text-gray-700 col-span-full';
+    empty.textContent = 'Nessun libro ancora. Aggiungi il primo!';
+    grid.appendChild(empty);
     return;
   }
-  books.forEach(book => {
-    const div = document.createElement('div');
-    div.className = 'book-card relative';
-    div.innerHTML = `<div class="font-bold">${book.title}</div><div class="text-sm">${book.author}</div>`;
-    div.addEventListener('click', () => {
-      editingBookId = book.id;
-      document.getElementById('modal-title').innerText = 'Modifica Libro';
-      document.getElementById('book-title').value = book.title;
-      document.getElementById('book-author').value = book.author;
-      document.getElementById('book-content').value = book.content || '';
-      document.getElementById('form-modal').classList.remove('hidden');
-    });
-    container.appendChild(div);
+  books.forEach(b=>{
+    const card = document.createElement('div');
+    card.className = 'book';
+    // spine decorative
+    const spine = document.createElement('div'); spine.className='spine'; card.appendChild(spine);
+    const title = document.createElement('div'); title.className='title'; title.textContent=b.title; card.appendChild(title);
+    const author = document.createElement('div'); author.className='author'; author.textContent='di ' + (b.author||'Autore sconosciuto'); card.appendChild(author);
+    card.addEventListener('click', ()=> openRead(b));
+    grid.appendChild(card);
   });
 }
+
+function openRead(book){
+  currentOpenId = book.id;
+  $('read-title').textContent = book.title;
+  $('read-author').textContent = 'di ' + (book.author || 'Autore sconosciuto');
+  $('read-content').textContent = book.content || "(Nessun contenuto)";
+  $('read-modal').classList.remove('hidden');
+}
+
+function openEdit(book){
+  $('edit-title').textContent = 'Modifica Libro';
+  $('input-title').value = book.title || '';
+  $('input-author').value = book.author || '';
+  $('input-content').value = book.content || '';
+  $('edit-modal').classList.remove('hidden');
+}
+
+function closeRead(){ $('read-modal').classList.add('hidden'); currentOpenId = null; }
+function closeEdit(){ $('edit-modal').classList.add('hidden'); editingId = null; }
+
+async function deleteCurrent(){
+  if(!confirm('Sei sicuro di voler eliminare questo libro?')) return;
+  if(!currentOpenId) return;
+  const { error } = await supabase.from('books').delete().eq('id', currentOpenId);
+  if(error){ toast('Errore eliminazione'); console.error(error); return; }
+  toast('Libro eliminato');
+  closeRead();
+  fetchBooks($('search').value);
+}
+
+let editingId = null;
+function editFromRead(){
+  if(!currentOpenId) return;
+  editingId = currentOpenId;
+  $('input-title').value = $('read-title').textContent;
+  $('input-author').value = $('read-author').textContent.replace(/^di\s*/i,'');
+  $('input-content').value = $('read-content').textContent;
+  $('edit-modal').classList.remove('hidden');
+  $('read-modal').classList.add('hidden');
+}
+
+async function saveEdit(){
+  const title = $('input-title').value.trim();
+  const author = $('input-author').value.trim();
+  const content = $('input-content').value.trim();
+  if(!title || !author){ toast('Titolo e autore obbligatori'); return; }
+  if(editingId){
+    const { error } = await supabase.from('books').update({ title, author, content }).eq('id', editingId);
+    if(error){ toast('Errore salvataggio'); console.error(error); return; }
+    toast('Modifica salvata');
+  } else {
+    const { error } = await supabase.from('books').insert([{ title, author, content, user_id: currentUserId }]);
+    if(error){ toast('Errore creazione'); console.error(error); return; }
+    toast('Libro aggiunto');
+  }
+  $('edit-modal').classList.add('hidden');
+  fetchBooks($('search').value);
+}
+
+function setupRealtime(){
+  if(realtimeSub){ supabase.removeChannel(realtimeSub); realtimeSub=null; }
+  realtimeSub = supabase
+    .channel('books_realtime_'+Math.random().toString(36).slice(2))
+    .on('postgres_changes', { event: '*', schema:'public', table:'books' }, payload=>{
+      fetchBooks($('search').value);
+    }).subscribe();
+}
+
+// ------- events -------
+$('login-btn').addEventListener('click', async (e)=>{ e.preventDefault(); await signIn($('email').value, $('password').value); });
+$('signup-btn').addEventListener('click', async (e)=>{ e.preventDefault(); await signUp($('email').value, $('password').value); });
+$('logout-btn').addEventListener('click', async ()=>{ await signOut(); });
+
+$('add-btn').addEventListener('click', ()=>{
+  editingId = null;
+  $('edit-title').textContent = 'Aggiungi Libro';
+  $('input-title').value=''; $('input-author').value=''; $('input-content').value='';
+  $('edit-modal').classList.remove('hidden');
+});
+$('refresh-btn').addEventListener('click', ()=> fetchBooks($('search').value));
+$('search').addEventListener('input', (e)=> fetchBooks(e.target.value));
+
+$('close-read').addEventListener('click', closeRead);
+$('delete-from-read').addEventListener('click', deleteCurrent);
+$('edit-from-read').addEventListener('click', editFromRead);
+$('cancel-edit').addEventListener('click', ()=>{ $('edit-modal').classList.add('hidden'); editingId=null; });
+$('save-btn').addEventListener('click', saveEdit);
+
+// auth state
+supabase.auth.onAuthStateChange((ev, sess)=>{
+  console.log('auth event', ev, sess);
+  if(sess && sess.user){
+    currentUserId = sess.user.id;
+    $('auth-status').textContent = 'Autenticato';
+    $('user-id').textContent = currentUserId;
+    $('logout-btn').classList.remove('hidden');
+    $('auth-panel').classList.add('hidden');
+    $('actions').classList.remove('hidden');
+    fetchBooks();
+    setupRealtime();
+  } else {
+    currentUserId = null;
+    $('auth-status').textContent = 'Non autenticato';
+    $('user-id').textContent = '';
+    $('logout-btn').classList.add('hidden');
+    $('auth-panel').classList.remove('hidden');
+    $('actions').classList.add('hidden');
+    renderGrid([]);
+    if(realtimeSub){ supabase.removeChannel(realtimeSub); realtimeSub=null; }
+  }
+});
 </script>
 </body>
 </html>
