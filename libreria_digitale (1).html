@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>La Tua Libreria Digitale</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://kit.fontawesome.com/a2e0e6ad0f.js" crossorigin="anonymous"></script>
+<style>
+  .book-card {
+    height: 12rem;
+    width: 8rem;
+    background-color: #6a493a;
+    color: white;
+    padding: 0.5rem;
+    border-radius: 8px;
+    box-shadow: 2px 2px 5px rgba(0,0,0,0.3);
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    transition: all 0.2s ease-in-out;
+  }
+  .book-card:hover {
+    transform: translateY(-5px) scale(1.05);
+    box-shadow: 5px 5px 15px rgba(0,0,0,0.5);
+  }
+</style>
+</head>
+<body class="bg-gray-100 min-h-screen p-4">
+<div id="auth-section" class="max-w-sm mx-auto bg-white p-6 rounded-xl shadow-lg mt-10">
+  <h1 class="text-2xl font-bold text-center mb-4">La Tua Libreria Digitale</h1>
+  <div id="auth-status" class="mb-4 text-center text-blue-500">Stato: Non autenticato</div>
+  <input id="email" type="email" placeholder="Email" class="w-full mb-2 p-2 border rounded">
+  <input id="password" type="password" placeholder="Password" class="w-full mb-4 p-2 border rounded">
+  <div class="flex justify-between">
+    <button id="login-btn" class="bg-green-500 text-white px-4 py-2 rounded">Accedi</button>
+    <button id="register-btn" class="bg-blue-500 text-white px-4 py-2 rounded">Registrati</button>
+  </div>
+</div>
+
+<div id="library-section" class="hidden max-w-4xl mx-auto mt-6">
+  <div class="flex justify-between items-center mb-4">
+    <input id="search-bar" type="text" placeholder="Cerca libro..." class="p-2 border rounded w-2/3">
+    <button id="add-book-btn" class="bg-blue-500 text-white px-4 py-2 rounded">Aggiungi Libro</button>
+    <button id="logout-btn" class="bg-red-500 text-white px-4 py-2 rounded">Logout</button>
+  </div>
+  <div id="books-list" class="grid grid-cols-2 md:grid-cols-4 gap-4"></div>
+</div>
+
+<div id="form-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center p-4">
+  <div class="bg-white rounded-lg p-6 w-full max-w-md">
+    <h2 id="modal-title" class="text-xl font-bold mb-4">Aggiungi Libro</h2>
+    <input id="book-title" placeholder="Titolo" class="w-full mb-2 p-2 border rounded">
+    <input id="book-author" placeholder="Autore" class="w-full mb-2 p-2 border rounded">
+    <textarea id="book-content" placeholder="Contenuto" class="w-full mb-4 p-2 border rounded"></textarea>
+    <div class="flex justify-between">
+      <button id="save-book-btn" class="bg-green-500 text-white px-4 py-2 rounded">Salva</button>
+      <button id="close-modal-btn" class="bg-gray-400 text-white px-4 py-2 rounded">Chiudi</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+<script>
+const SUPABASE_URL = 'https://ipdhzwkyzvpwtcoekhog.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlwZGh6d2t5enZwd3Rjb2VraG9nIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQ3NDYyNzMsImV4cCI6MjA3MDMyMjI3M30.50O7BW_34dD9fcza9zDi5WuhW-r9EVinopMLOnhqQtA';
+const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+let editingBookId = null;
+let userId = null;
+
+// Login
+document.getElementById('login-btn').addEventListener('click', async (e) => {
+  e.preventDefault();
+  const email = document.getElementById('email').value;
+  const password = document.getElementById('password').value;
+  const { error } = await supabaseClient.auth.signInWithPassword({ email, password });
+  if (error) alert(error.message);
+  else console.log('Login effettuato');
+});
+
+// Registrazione
+document.getElementById('register-btn').addEventListener('click', async (e) => {
+  e.preventDefault();
+  const email = document.getElementById('email').value;
+  const password = document.getElementById('password').value;
+  const { error } = await supabaseClient.auth.signUp({ email, password });
+  if (error) alert(error.message);
+  else console.log('Registrazione effettuata');
+});
+
+// Logout
+document.getElementById('logout-btn').addEventListener('click', async () => {
+  await supabaseClient.auth.signOut();
+  console.log('Logout effettuato');
+});
+
+// Stato auth
+supabaseClient.auth.onAuthStateChange((event, session) => {
+  if (session) {
+    userId = session.user.id;
+    document.getElementById('auth-section').classList.add('hidden');
+    document.getElementById('library-section').classList.remove('hidden');
+    fetchBooks();
+  } else {
+    userId = null;
+    document.getElementById('auth-section').classList.remove('hidden');
+    document.getElementById('library-section').classList.add('hidden');
+  }
+});
+
+// Mostra form aggiunta libro
+document.getElementById('add-book-btn').addEventListener('click', () => {
+  editingBookId = null;
+  document.getElementById('modal-title').innerText = 'Aggiungi Libro';
+  document.getElementById('book-title').value = '';
+  document.getElementById('book-author').value = '';
+  document.getElementById('book-content').value = '';
+  document.getElementById('form-modal').classList.remove('hidden');
+});
+
+// Chiudi modal
+document.getElementById('close-modal-btn').addEventListener('click', () => {
+  document.getElementById('form-modal').classList.add('hidden');
+});
+
+// Salva libro
+document.getElementById('save-book-btn').addEventListener('click', async () => {
+  const title = document.getElementById('book-title').value.trim();
+  const author = document.getElementById('book-author').value.trim();
+  const content = document.getElementById('book-content').value.trim();
+  if (!title || !author) {
+    alert('Titolo e autore sono obbligatori');
+    return;
+  }
+  if (editingBookId) {
+    await supabaseClient.from('books').update({ title, author, content }).eq('id', editingBookId);
+  } else {
+    await supabaseClient.from('books').insert([{ title, author, content, user_id: userId }]);
+  }
+  document.getElementById('form-modal').classList.add('hidden');
+  fetchBooks();
+});
+
+// Cerca libri
+document.getElementById('search-bar').addEventListener('input', fetchBooks);
+
+// Fetch libri
+async function fetchBooks() {
+  const searchTerm = document.getElementById('search-bar').value;
+  let query = supabaseClient.from('books').select('*').eq('user_id', userId).order('title', { ascending: true });
+  if (searchTerm) {
+    query = query.ilike('title', `%${searchTerm}%`);
+  }
+  const { data, error } = await query;
+  if (!error) renderBooks(data);
+}
+
+// Render libri
+function renderBooks(books) {
+  const container = document.getElementById('books-list');
+  container.innerHTML = '';
+  if (!books.length) {
+    container.innerHTML = '<div class="col-span-full text-center text-gray-500">Nessun libro trovato</div>';
+    return;
+  }
+  books.forEach(book => {
+    const div = document.createElement('div');
+    div.className = 'book-card relative';
+    div.innerHTML = `<div class="font-bold">${book.title}</div><div class="text-sm">${book.author}</div>`;
+    div.addEventListener('click', () => {
+      editingBookId = book.id;
+      document.getElementById('modal-title').innerText = 'Modifica Libro';
+      document.getElementById('book-title').value = book.title;
+      document.getElementById('book-author').value = book.author;
+      document.getElementById('book-content').value = book.content || '';
+      document.getElementById('form-modal').classList.remove('hidden');
+    });
+    container.appendChild(div);
+  });
+}
+</script>
+</body>
+</html>
