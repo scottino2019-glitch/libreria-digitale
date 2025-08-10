@@ -52,9 +52,12 @@ body {
   </div>
   <div id="books-list" class="grid grid-cols-1 md:grid-cols-3 gap-4"></div>
 </div>
-<div id="epub-viewer" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:white; z-index:2000;">
-  <button onclick="document.getElementById('epub-viewer').style.display='none'" 
+
+<!-- Viewer -->
+<div id="book-viewer" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:white; z-index:2000;">
+  <button onclick="document.getElementById('book-viewer').style.display='none'" 
     class="absolute top-4 right-4 bg-red-500 text-white px-4 py-2 rounded">Chiudi</button>
+  <iframe id="viewer-frame" class="w-full h-full" style="border:none;"></iframe>
 </div>
 
 <script>
@@ -95,18 +98,17 @@ function renderBooks(books) {
     return;
   }
   container.innerHTML = books.map(book => `
-    <div class="book relative">
+    <div class="book-card">
       <div class="font-bold">${book.title}</div>
       <div class="text-sm mb-2">${book.author}</div>
       <div class="flex gap-2">
         <button onclick="openBook('${book.file_url}')" class="bg-yellow-500 text-white px-2 py-1 rounded">📖 Leggi</button>
-        <button onclick="editBook(${book.id})" class="bg-blue-500 text-white px-2 py-1 rounded">✏️ Modifica</button>
+        <button onclick="editBook(${book.id}, '${book.title}', '${book.author}')" class="bg-blue-500 text-white px-2 py-1 rounded">✏️ Modifica</button>
         <button onclick="deleteBook(${book.id})" class="bg-red-500 text-white px-2 py-1 rounded">🗑️ Elimina</button>
       </div>
     </div>
   `).join('');
 }
-
 
 // Upload libro
 document.getElementById("add-book-btn").addEventListener("click", () => {
@@ -120,7 +122,7 @@ document.getElementById("file-upload").addEventListener("change", async (e) => {
   const title = prompt("Titolo del libro:");
   const author = prompt("Autore del libro:");
 
-  const { data: storageData, error: storageError } = await supabaseClient
+  const { error: storageError } = await supabaseClient
     .storage
     .from("books-storage")
     .upload(`${userId}/${file.name}`, file, { upsert: true });
@@ -130,7 +132,7 @@ document.getElementById("file-upload").addEventListener("change", async (e) => {
     return;
   }
 
-  const fileUrl = `${supabaseClient.storage.from("books-storage").getPublicUrl(`${userId}/${file.name}`).data.publicUrl}`;
+  const fileUrl = supabaseClient.storage.from("books-storage").getPublicUrl(`${userId}/${file.name}`).data.publicUrl;
 
   const { error: insertError } = await supabaseClient
     .from("books")
@@ -176,13 +178,13 @@ async function deleteBook(id) {
   }
   fetchBooks();
 }
-// Open Book
-function openBook(fileUrl) {
-  const viewer = document.getElementById('epub-viewer');
-  viewer.innerHTML = `<iframe src="${fileUrl}" class="w-full h-full" style="border:none;"></iframe>`;
-  viewer.style.display = 'block';
-}
 
+// Apri libro
+function openBook(fileUrl) {
+  const frame = document.getElementById('viewer-frame');
+  frame.src = fileUrl;
+  document.getElementById('book-viewer').style.display = 'block';
+}
 
 // Ricerca
 document.getElementById("search-bar").addEventListener("input", (e) => {
