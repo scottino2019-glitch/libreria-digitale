@@ -6,7 +6,6 @@
 <title>📚 La Tua Biblioteca Digitale</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
-<script src="https://cdn.jsdelivr.net/npm/epubjs/dist/epub.min.js"></script>
 
 <style>
 body {
@@ -22,20 +21,6 @@ body {
 }
 .book-card:hover {
   transform: translateY(-5px);
-}
-#reader-modal {
-  position: fixed;
-  top: 0; left: 0;
-  width: 100vw; height: 100vh;
-  background: rgba(0,0,0,0.9);
-  z-index: 999;
-  display: none;
-  flex-direction: column;
-}
-#reader-content {
-  flex: 1;
-  overflow: auto;
-  background: white;
 }
 </style>
 </head>
@@ -65,15 +50,6 @@ body {
     </div>
   </div>
   <div id="books-list" class="grid grid-cols-1 md:grid-cols-3 gap-4"></div>
-</div>
-
-<!-- Lettore -->
-<div id="reader-modal">
-  <div class="flex justify-between bg-gray-800 text-white p-2">
-    <h2 id="reader-title" class="text-lg font-bold">📖 Lettore</h2>
-    <button onclick="closeReader()" class="bg-red-600 px-4 py-1 rounded">Chiudi</button>
-  </div>
-  <div id="reader-content"></div>
 </div>
 
 <script>
@@ -120,7 +96,7 @@ function renderBooks(books) {
         <p class="text-sm text-gray-600">${book.author || ""}</p>
       </div>
       <div class="flex justify-between mt-4">
-        <button onclick="openReader('${book.file_url}', '${book.title}')" class="bg-green-500 text-white px-2 py-1 rounded">📖 Leggi</button>
+        <a href="${book.file_url}" target="_blank" class="bg-green-500 text-white px-2 py-1 rounded">📖 Leggi</a>
         <button onclick="editBook('${book.id}', '${book.title}', '${book.author}')" class="bg-yellow-500 text-white px-2 py-1 rounded">✏️ Modifica</button>
         <button onclick="deleteBook('${book.id}')" class="bg-red-500 text-white px-2 py-1 rounded">🗑️ Elimina</button>
       </div>
@@ -128,31 +104,7 @@ function renderBooks(books) {
   `).join("");
 }
 
-// Lettore
-function openReader(url, title) {
-  document.getElementById("reader-title").textContent = title;
-  const readerContent = document.getElementById("reader-content");
-  readerContent.innerHTML = "";
-
-  if (url.toLowerCase().endsWith(".pdf")) {
-    readerContent.innerHTML = `<iframe src="${url}" style="width:100%;height:100%;" frameborder="0"></iframe>`;
-  } else if (url.toLowerCase().endsWith(".epub")) {
-    const book = ePub(url);
-    const rendition = book.renderTo(readerContent, { width: "100%", height: "100%" });
-    rendition.display();
-  } else {
-    readerContent.innerHTML = `<p class="p-4">Formato non supportato.</p>`;
-  }
-
-  document.getElementById("reader-modal").style.display = "flex";
-}
-
-function closeReader() {
-  document.getElementById("reader-modal").style.display = "none";
-  document.getElementById("reader-content").innerHTML = "";
-}
-
-// Upload libro
+// Upload libro (fix estensione)
 document.getElementById("add-book-btn").addEventListener("click", () => {
   document.getElementById("file-upload").click();
 });
@@ -250,7 +202,7 @@ document.getElementById("register-btn").onclick = async () => {
   document.getElementById("auth-message").textContent = error ? error.message : "Registrazione completata! Controlla la tua email.";
 };
 
-// Logout immediato
+// Logout immediato senza refresh
 document.getElementById("logout-btn").onclick = async () => {
   await supabaseClient.auth.signOut();
   userId = null;
