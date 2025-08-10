@@ -1,226 +1,392 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="it">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>📚 La Tua Biblioteca Digitale</title>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>📚 Biblioteca — PDF & EPUB reader</title>
+
+<!-- Tailwind -->
 <script src="https://cdn.tailwindcss.com"></script>
+<!-- Supabase SDK -->
 <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+<!-- epub.js for EPUB reading -->
+<script src="https://unpkg.com/epubjs/dist/epub.min.js"></script>
 
 <style>
-body {
-  background: linear-gradient(135deg, #f5deb3, #deb887);
-  font-family: 'Georgia', serif;
-}
-.book-card {
-  background-color: #fff8dc;
-  border-radius: 12px;
-  padding: 1rem;
-  box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-  transition: transform 0.2s;
-}
-.book-card:hover {
-  transform: translateY(-5px);
-}
+  body { background: linear-gradient(180deg,#f7efe6, #efe6d9); font-family: Inter, system-ui, -apple-system; }
+  .card { background:white; border-radius:12px; padding:16px; box-shadow:0 8px 24px rgba(0,0,0,0.08); }
+  .book-card { background:#fff8dc; border-radius:10px; padding:12px; box-shadow:0 6px 18px rgba(0,0,0,0.06); }
+  .btn { padding:8px 12px; border-radius:8px; font-weight:600; }
+  /* viewer modal */
+  #reader-modal { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.6); z-index:9999; align-items:center; justify-content:center; }
+  #reader-content { width:90%; height:90%; background:white; border-radius:10px; overflow:hidden; position:relative; display:flex; flex-direction:column; }
+  #reader-close { position:absolute; top:12px; right:12px; z-index:2; }
+  #pdf-frame { width:100%; height:100%; border:0; }
+  #epub-container { width:100%; height:100%; overflow:auto; }
+  /* responsive */
+  @media (max-width:640px){
+    #reader-content { width:98%; height:94%; }
+  }
 </style>
 </head>
+<body class="min-h-screen p-6">
 
-<body class="min-h-screen p-4">
+<div class="max-w-5xl mx-auto">
 
-<!-- Autenticazione -->
-<div id="auth-section" class="max-w-sm mx-auto bg-white rounded-lg shadow-lg p-6">
-  <h1 class="text-2xl font-bold text-center mb-4">📚 La Tua Biblioteca Digitale</h1>
-  <input id="email" type="email" placeholder="Email" class="w-full mb-2 p-2 border rounded">
-  <input id="password" type="password" placeholder="Password" class="w-full mb-4 p-2 border rounded">
-  <div class="flex justify-between">
-    <button id="login-btn" class="bg-green-600 text-white px-4 py-2 rounded">Accedi</button>
-    <button id="register-btn" class="bg-blue-600 text-white px-4 py-2 rounded">Registrati</button>
-  </div>
-  <div id="auth-message" class="mt-4 text-center text-sm text-gray-700"></div>
-</div>
-  
+  <!-- HEADER / AUTH -->
+  <header class="flex items-center justify-between mb-6">
+    <h1 class="text-2xl font-bold">📚 La Tua Biblioteca</h1>
+    <div id="auth-info" class="text-sm text-gray-700">Non autenticato</div>
+  </header>
 
-<!-- Biblioteca -->
-<div id="library-section" class="hidden max-w-5xl mx-auto">
-  <div class="flex justify-between items-center mb-4">
-    <input id="search-bar" type="text" placeholder="Cerca libro..." class="p-2 border rounded w-2/3">
-    <div class="flex gap-2">
-      <input id="file-upload" type="file" class="hidden" />
-      <button id="add-book-btn" class="bg-blue-600 text-white px-4 py-2 rounded">📤 Aggiungi Libro</button>
-      <button id="logout-btn" class="bg-red-600 text-white px-4 py-2 rounded">🚪 Logout</button>
-    </div>
-  </div>
-  <div id="books-list" class="grid grid-cols-1 md:grid-cols-3 gap-4"></div>
-</div>
-
-<!-- Viewer -->
-<div id="book-viewer" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:white; z-index:2000;">
-  <button onclick="document.getElementById('book-viewer').style.display='none'" 
-    class="absolute top-4 right-4 bg-red-500 text-white px-4 py-2 rounded">Chiudi</button>
-  <iframe id="viewer-frame" class="w-full h-full" style="border:none;"></iframe>
-</div>
-
-<script>
-// Configurazione Supabase
-const { createClient } = supabase;
-const supabaseClient = createClient(
-  "https://ipdhzwkyzvpwtcoekhog.supabase.co",
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlwZGh6d2t5enZwd3Rjb2VraG9nIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQ3NDYyNzMsImV4cCI6MjA3MDMyMjI3M30.50O7BW_34dD9fcza9zDi5WuhW-r9EVinopMLOnhqQtA"
-);
-
-let userId = null;
-
-// Fetch libri
-async function fetchBooks(search = "") {
-  let query = supabaseClient
-    .from("books")
-    .select("*")
-    .eq("user_id", userId)
-    .order("title", { ascending: true });
-
-  if (search) {
-    query = query.ilike("title", `%${search}%`);
-  }
-
-  const { data, error } = await query;
-  if (error) {
-    console.error(error);
-    return;
-  }
-  renderBooks(data);
-}
-
-// Render libri
-function renderBooks(books) {
-  const container = document.getElementById('books-list');
-  if (!books.length) {
-    container.innerHTML = '<div class="col-span-full text-center text-gray-500">Nessun libro trovato</div>';
-    return;
-  }
-  container.innerHTML = books.map(book => `
-    <div class="book-card">
-      <div class="font-bold">${book.title}</div>
-      <div class="text-sm mb-2">${book.author}</div>
+  <!-- AUTH CARD -->
+  <section id="auth-card" class="card max-w-md mx-auto mb-6">
+    <h2 class="font-semibold mb-3">Accedi / Registrati</h2>
+    <div class="grid gap-2">
+      <input id="email" type="email" placeholder="Email" class="p-2 border rounded" />
+      <input id="password" type="password" placeholder="Password" class="p-2 border rounded" />
       <div class="flex gap-2">
-        <button onclick="openBook('${book.file_url}')" class="bg-yellow-500 text-white px-2 py-1 rounded">📖 Leggi</button>
-        <button onclick="editBook(${book.id}, '${book.title}', '${book.author}')" class="bg-blue-500 text-white px-2 py-1 rounded">✏️ Modifica</button>
-        <button onclick="deleteBook(${book.id})" class="bg-red-500 text-white px-2 py-1 rounded">🗑️ Elimina</button>
+        <button id="login-btn" class="btn bg-green-600 text-white">Accedi</button>
+        <button id="signup-btn" class="btn bg-blue-600 text-white">Registrati</button>
+        <button id="logout-btn" class="btn bg-red-600 text-white ml-auto hidden">Logout</button>
+      </div>
+      <div id="auth-message" class="text-sm text-gray-600 mt-2"></div>
+    </div>
+  </section>
+
+  <!-- UPLOAD & SEARCH -->
+  <section id="library-card" class="card hidden mb-6">
+    <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+      <div class="flex items-center gap-2">
+        <button id="btn-upload" class="btn bg-amber-600 text-white">➕ Aggiungi libro (file)</button>
+        <input id="input-file" type="file" accept=".pdf,.epub,.txt" class="hidden" />
+        <span id="file-info" class="text-sm text-gray-600"></span>
+      </div>
+      <div class="flex items-center gap-2">
+        <input id="search" placeholder="Cerca titolo o autore..." class="p-2 border rounded w-64" />
+        <button id="refresh" class="btn bg-gray-200">Aggiorna</button>
       </div>
     </div>
-  `).join('');
+  </section>
+
+  <!-- BOOKS GRID -->
+  <section id="books-grid-card" class="card hidden">
+    <h3 class="font-semibold mb-3">I tuoi libri</h3>
+    <div id="books-list" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4"></div>
+  </section>
+
+</div>
+
+<!-- Reader modal (shared for PDF and EPUB) -->
+<div id="reader-modal" class="flex">
+  <div id="reader-content">
+    <button id="reader-close" class="btn bg-red-500 text-white">Chiudi ✖</button>
+    <div id="reader-body" style="flex:1; position:relative;">
+      <!-- PDF iframe -->
+      <iframe id="pdf-frame" style="display:none;"></iframe>
+      <!-- EPUB container -->
+      <div id="epub-container" style="display:none;"></div>
+    </div>
+  </div>
+</div>
+
+<!-- small toast -->
+<div id="toast" style="position:fixed; right:20px; bottom:20px; background:#111827; color:white; padding:10px 14px; border-radius:8px; display:none;"></div>
+
+<script>
+/* ----------------------------------------
+   CONFIG SUPABASE - usa la tua URL e KEY
+   ---------------------------------------- */
+const SUPABASE_URL = "https://ipdhzwkyzvpwtcoekhog.supabase.co";
+const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlwZGh6d2t5enZwd3Rjb2VraG9nIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQ3NDYyNzMsImV4cCI6MjA3MDMyMjI3M30.50O7BW_34dD9fcza9zDi5WuhW-r9EVinopMLOnhqQtA";
+
+const { createClient } = supabase;
+const sb = createClient(SUPABASE_URL, SUPABASE_KEY);
+
+/* UI helpers */
+const $ = id => document.getElementById(id);
+function showToast(msg, t = 3000) {
+  const toast = $('toast');
+  toast.textContent = msg;
+  toast.style.display = 'block';
+  clearTimeout(toast._t);
+  toast._t = setTimeout(()=> toast.style.display='none', t);
 }
 
-// Upload libro
-document.getElementById("add-book-btn").addEventListener("click", () => {
-  document.getElementById("file-upload").click();
+/* state */
+let currentUser = null;
+let epubBook = null;
+let epubRendition = null;
+
+/* AUTH */
+$('signup-btn').addEventListener('click', async (e) => {
+  e.preventDefault();
+  const email = $('email').value.trim();
+  const password = $('password').value;
+  if(!email || !password) { showToast('Email e password richieste', 2500); return; }
+  const { data, error } = await sb.auth.signUp({ email, password });
+  console.log('signup', data, error);
+  if(error) { $('auth-message').textContent = error.message; return; }
+  $('auth-message').textContent = 'Registrazione inviata — controlla la tua email.';
 });
 
-document.getElementById("file-upload").addEventListener("change", async (e) => {
-  const file = e.target.files[0];
-  if (!file) return;
-
-  const title = prompt("Titolo del libro:");
-  const author = prompt("Autore del libro:");
-
-  const { error: storageError } = await supabaseClient
-    .storage
-    .from("books-storage")
-    .upload(`${userId}/${file.name}`, file, { upsert: true });
-
-  if (storageError) {
-    alert("Errore upload file: " + storageError.message);
-    return;
-  }
-
-  const fileUrl = supabaseClient.storage.from("books-storage").getPublicUrl(`${userId}/${file.name}`).data.publicUrl;
-
-  const { error: insertError } = await supabaseClient
-    .from("books")
-    .insert([{ title, author, file_url: fileUrl, user_id: userId }]);
-
-  if (insertError) {
-    alert("Errore salvataggio libro: " + insertError.message);
-    return;
-  }
-
-  fetchBooks();
+$('login-btn').addEventListener('click', async (e) => {
+  e.preventDefault();
+  const email = $('email').value.trim();
+  const password = $('password').value;
+  if(!email || !password) { showToast('Email e password richieste', 2500); return; }
+  const { data, error } = await sb.auth.signInWithPassword({ email, password });
+  console.log('login', data, error);
+  if(error) { $('auth-message').textContent = error.message; return; }
+  $('auth-message').textContent = 'Login effettuato!';
 });
 
-// Modifica libro
-async function editBook(id, oldTitle, oldAuthor) {
-  const newTitle = prompt("Nuovo titolo:", oldTitle);
-  const newAuthor = prompt("Nuovo autore:", oldAuthor);
-
-  const { error } = await supabaseClient
-    .from("books")
-    .update({ title: newTitle, author: newAuthor })
-    .eq("id", id)
-    .eq("user_id", userId);
-
-  if (error) {
-    alert("Errore modifica: " + error.message);
-    return;
-  }
-  fetchBooks();
-}
-
-// Elimina libro
-async function deleteBook(id) {
-  if (!confirm("Sei sicuro di voler eliminare questo libro?")) return;
-  const { error } = await supabaseClient
-    .from("books")
-    .delete()
-    .eq("id", id)
-    .eq("user_id", userId);
-  if (error) {
-    alert("Errore eliminazione: " + error.message);
-    return;
-  }
-  fetchBooks();
-}
-
-// Apri libro
-function openBook(fileUrl) {
-  const frame = document.getElementById('viewer-frame');
-  frame.src = fileUrl;
-  document.getElementById('book-viewer').style.display = 'block';
-}
-
-// Ricerca
-document.getElementById("search-bar").addEventListener("input", (e) => {
-  fetchBooks(e.target.value);
+$('logout-btn').addEventListener('click', async () => {
+  await sb.auth.signOut();
+  showToast('Logout');
 });
 
-// Autenticazione
-document.getElementById("login-btn").onclick = async () => {
-  const email = document.getElementById("email").value;
-  const password = document.getElementById("password").value;
-  const { error } = await supabaseClient.auth.signInWithPassword({ email, password });
-  document.getElementById("auth-message").textContent = error ? error.message : "Login effettuato!";
-};
-
-document.getElementById("register-btn").onclick = async () => {
-  const email = document.getElementById("email").value;
-  const password = document.getElementById("password").value;
-  const { error } = await supabaseClient.auth.signUp({ email, password });
-  document.getElementById("auth-message").textContent = error ? error.message : "Registrazione completata! Controlla la tua email.";
-};
-
-document.getElementById("logout-btn").onclick = async () => {
-  await supabaseClient.auth.signOut();
-};
-
-// Stato auth
-supabaseClient.auth.onAuthStateChange((event, session) => {
-  if (session) {
-    userId = session.user.id;
-    document.getElementById("auth-section").classList.add("hidden");
-    document.getElementById("library-section").classList.remove("hidden");
-    fetchBooks();
+/* on auth state change */
+sb.auth.onAuthStateChange((ev, session) => {
+  console.log('auth event', ev, session);
+  if(session && session.user) {
+    currentUser = session.user;
+    $('auth-info').textContent = `Connesso: ${currentUser.email || currentUser.id}`;
+    $('auth-card').classList && $('auth-card').classList.add('hidden');
+    $('library-card').classList.remove('hidden');
+    $('books-grid-card').classList.remove('hidden');
+    $('logout-btn').classList.remove('hidden');
+    loadBooks();
   } else {
-    userId = null;
-    document.getElementById("auth-section").classList.remove("hidden");
-    document.getElementById("library-section").classList.add("hidden");
+    currentUser = null;
+    $('auth-info').textContent = 'Non autenticato';
+    $('auth-card').classList.remove('hidden');
+    $('library-card').classList.add('hidden');
+    $('books-grid-card').classList.add('hidden');
+    $('logout-btn').classList.add('hidden');
+    clearBooksUI();
+  }
+});
+
+/* CLEAR UI */
+function clearBooksUI(){
+  $('books-list').innerHTML = '';
+}
+
+/* ---------------------------
+   UPLOAD (file -> storage)
+   - bucket: books-storage (public)
+   - save metadata: title, author, file_path, file_url, file_type, user_id
+   --------------------------- */
+$('btn-upload').addEventListener('click', ()=> $('input-file').click());
+$('input-file').addEventListener('change', async (e) => {
+  const f = e.target.files[0];
+  if(!f) return;
+  $('file-info').textContent = f.name;
+  const title = prompt('Titolo del libro (lascia vuoto per usare il nome file):', f.name) || f.name;
+  const author = prompt('Autore (opzionale):', '') || '';
+  const ext = f.name.split('.').pop().toLowerCase();
+  const fileType = ext === 'pdf' ? 'pdf' : (ext === 'epub' ? 'epub' : 'other');
+
+  // storage path: userId/timestamp_filename -> evita collisioni
+  const path = `${currentUser.id}/${Date.now()}_${f.name}`;
+
+  showToast('Caricamento in corso…');
+  const { data: upData, error: upErr } = await sb.storage.from('books-storage').upload(path, f, { upsert: false });
+  if(upErr) { console.error(upErr); showToast('Upload fallito: ' + upErr.message); return; }
+
+  // public URL
+  const { data: urlData } = sb.storage.from('books-storage').getPublicUrl(path);
+  const publicUrl = urlData.publicUrl;
+
+  // save metadata in DB
+  const { error: dbErr } = await sb.from('books').insert([{
+    title, author, file_path: path, file_url: publicUrl, file_type: fileType, user_id: currentUser.id
+  }]);
+  if(dbErr) { console.error(dbErr); showToast('Salvataggio metadati fallito'); return; }
+
+  showToast('Caricato e salvato!');
+  $('input-file').value = '';
+  $('file-info').textContent = '';
+  loadBooks();
+});
+
+/* ---------------------------
+   LOAD / RENDER BOOKS (user only)
+   --------------------------- */
+async function loadBooks() {
+  if(!currentUser) return;
+  const q = sb.from('books').select('*').eq('user_id', currentUser.id).order('title',{ascending:true});
+  const { data, error } = await q;
+  if(error) { console.error(error); showToast('Errore caricamento libri'); return; }
+  renderBooks(data || []);
+}
+
+function renderBooks(books){
+  const container = $('books-list');
+  container.innerHTML = '';
+  if(!books || books.length === 0) {
+    container.innerHTML = '<div class="text-gray-600">Nessun libro ancora</div>';
+    return;
+  }
+
+  books.forEach(book => {
+    const card = document.createElement('div');
+    card.className = 'book-card flex flex-col justify-between';
+
+    const meta = document.createElement('div');
+    const h = document.createElement('div'); h.className='font-bold'; h.textContent = book.title;
+    const p = document.createElement('div'); p.className='text-sm text-gray-700'; p.textContent = book.author || '';
+    meta.appendChild(h); meta.appendChild(p);
+
+    const actions = document.createElement('div');
+    actions.className = 'flex gap-2 mt-3';
+
+    const btnRead = document.createElement('button');
+    btnRead.className = 'btn bg-green-600 text-white';
+    btnRead.textContent = '📖 Leggi';
+    btnRead.onclick = () => openBook(book.file_path, book.file_type, book.file_url);
+
+    const btnEdit = document.createElement('button');
+    btnEdit.className = 'btn bg-yellow-500 text-white';
+    btnEdit.textContent = '✏️ Modifica';
+    btnEdit.onclick = () => editMetadata(book.id, book.title, book.author);
+
+    const btnDel = document.createElement('button');
+    btnDel.className = 'btn bg-red-500 text-white';
+    btnDel.textContent = '🗑 Elimina';
+    btnDel.onclick = () => deleteBook(book.id, book.file_path);
+
+    actions.appendChild(btnRead);
+    actions.appendChild(btnEdit);
+    actions.appendChild(btnDel);
+
+    card.appendChild(meta);
+    card.appendChild(actions);
+    container.appendChild(card);
+  });
+}
+
+/* ---------------------------
+   OPEN BOOK (PDF / EPUB / other)
+   - file_path: path in storage (userId/...)
+   - file_type: pdf | epub | other
+   - fallback: if file_url passed, use it, otherwise getPublicUrl
+   --------------------------- */
+async function openBook(file_path, file_type, file_url = null) {
+  // get public url if not provided
+  let publicUrl = file_url;
+  if(!publicUrl) {
+    const { data } = sb.storage.from('books-storage').getPublicUrl(file_path);
+    publicUrl = data.publicUrl;
+  }
+
+  // safe check
+  if(!publicUrl) { showToast('File non disponibile', 3000); return; }
+
+  const modal = $('reader-modal');
+  const pdfFrame = $('pdf-frame');
+  const epubContainer = $('epub-container');
+
+  // reset viewer
+  pdfFrame.style.display = 'none';
+  epubContainer.style.display = 'none';
+  epubContainer.innerHTML = '';
+  if(epubRendition) {
+    try { epubRendition.destroy(); } catch(e) { /* ignore */ }
+    epubRendition = null; epubBook = null;
+  }
+
+  if(file_type === 'pdf') {
+    // Open PDF in iframe - browser should render it inline if MIME is correct
+    pdfFrame.src = publicUrl;
+    pdfFrame.style.display = 'block';
+    modal.style.display = 'flex';
+  } else if(file_type === 'epub') {
+    // Use epub.js to read inside page
+    modal.style.display = 'flex';
+    epubContainer.style.display = 'block';
+    // instantiate book and rendition
+    epubBook = ePub(publicUrl);
+    epubRendition = epubBook.renderTo('epub-container', { width: '100%', height: '100%' });
+    epubRendition.display().catch(err => {
+      console.error('epub display error', err);
+      showToast('Impossibile aprire EPUB', 3000);
+    });
+  } else {
+    // other types: open in new tab (may download)
+    window.open(publicUrl, '_blank');
+  }
+}
+
+/* close reader */
+$('reader-close').addEventListener('click', ()=> {
+  const modal = $('reader-modal');
+  modal.style.display = 'none';
+  $('pdf-frame').src = 'about:blank';
+  if(epubRendition){ try{ epubRendition.destroy(); } catch(e){} epubRendition = null; epubBook = null; }
+});
+
+/* ---------------------------
+   Edit metadata
+   --------------------------- */
+async function editMetadata(id, oldTitle, oldAuthor) {
+  const newTitle = prompt('Nuovo titolo:', oldTitle);
+  const newAuthor = prompt('Nuovo autore:', oldAuthor);
+  if(newTitle === null) return; // user cancelled
+  const { error } = await sb.from('books').update({ title: newTitle, author: newAuthor }).eq('id', id).eq('user_id', currentUser.id);
+  if(error){ console.error(error); showToast('Errore aggiornamento'); return; }
+  showToast('Aggiornato');
+  loadBooks();
+}
+
+/* ---------------------------
+   Delete (DB row + try remove storage object)
+   --------------------------- */
+async function deleteBook(id, file_path) {
+  if(!confirm('Eliminare questo libro?')) return;
+  const { error } = await sb.from('books').delete().eq('id', id).eq('user_id', currentUser.id);
+  if(error){ console.error(error); showToast('Errore eliminazione'); return; }
+
+  // attempt to remove storage object (best-effort)
+  try {
+    await sb.storage.from('books-storage').remove([file_path]);
+  } catch(e) { console.warn('delete storage failed', e); }
+
+  showToast('Eliminato');
+  loadBooks();
+}
+
+/* ---------------------------
+   Search & refresh
+   --------------------------- */
+$('search').addEventListener('input', (e)=> {
+  const q = e.target.value.trim();
+  if(!q) return loadBooks();
+  // use ilike OR author.ilike
+  sb.from('books').select('*')
+    .eq('user_id', currentUser.id)
+    .or(`title.ilike.%${q}%,author.ilike.%${q}%`)
+    .order('title',{ascending:true})
+    .then(({ data, error }) => {
+      if(error) { console.error(error); showToast('Errore ricerca'); return; }
+      renderBooks(data || []);
+    });
+});
+
+$('refresh').addEventListener('click', ()=> loadBooks());
+
+/* Initialize: check session */
+sb.auth.getSession().then(({ data })=>{
+  if(data && data.session && data.session.user) {
+    // triggers onAuthStateChange as well
+    currentUser = data.session.user;
+    $('auth-info').textContent = `Connesso: ${currentUser.email || currentUser.id}`;
+    $('auth-card').classList && $('auth-card').classList.add('hidden');
+    $('library-card').classList.remove('hidden');
+    $('books-grid-card').classList.remove('hidden');
+    $('logout-btn').classList.remove('hidden');
+    loadBooks();
   }
 });
 </script>
