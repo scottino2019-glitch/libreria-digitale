@@ -6,7 +6,7 @@
 <title>📚 La Tua Biblioteca Digitale</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
-<script src="https://unpkg.com/epubjs/dist/epub.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/epubjs/dist/epub.min.js"></script>
 
 <style>
 body {
@@ -23,17 +23,19 @@ body {
 .book-card:hover {
   transform: translateY(-5px);
 }
-#reader-overlay {
+#reader-modal {
   position: fixed;
-  top: 0; left: 0; right: 0; bottom: 0;
-  background: white;
-  z-index: 9999;
+  top: 0; left: 0;
+  width: 100vw; height: 100vh;
+  background: rgba(0,0,0,0.9);
+  z-index: 999;
   display: none;
   flex-direction: column;
 }
-#reader-container {
+#reader-content {
   flex: 1;
   overflow: auto;
+  background: white;
 }
 </style>
 </head>
@@ -65,13 +67,13 @@ body {
   <div id="books-list" class="grid grid-cols-1 md:grid-cols-3 gap-4"></div>
 </div>
 
-<!-- Lettore a schermo intero -->
-<div id="reader-overlay" class="flex">
-  <div class="bg-gray-200 p-2 flex justify-between items-center">
-    <span class="font-bold">📖 Lettura</span>
-    <button id="close-reader" class="bg-red-500 text-white px-3 py-1 rounded">Chiudi</button>
+<!-- Lettore -->
+<div id="reader-modal">
+  <div class="flex justify-between bg-gray-800 text-white p-2">
+    <h2 id="reader-title" class="text-lg font-bold">📖 Lettore</h2>
+    <button onclick="closeReader()" class="bg-red-600 px-4 py-1 rounded">Chiudi</button>
   </div>
-  <div id="reader-container"></div>
+  <div id="reader-content"></div>
 </div>
 
 <script>
@@ -108,4 +110,167 @@ async function fetchBooks(search = "") {
 function renderBooks(books) {
   const container = document.getElementById("books-list");
   if (!books.length) {
-    container.innerHTML = `<div class="text-center text-gray-50
+    container.innerHTML = `<div class="text-center text-gray-500 col-span-full">Nessun libro trovato</div>`;
+    return;
+  }
+  container.innerHTML = books.map(book => `
+    <div class="book-card flex flex-col justify-between">
+      <div>
+        <h3 class="font-bold">${book.title}</h3>
+        <p class="text-sm text-gray-600">${book.author || ""}</p>
+      </div>
+      <div class="flex justify-between mt-4">
+        <button onclick="openReader('${book.file_url}', '${book.title}')" class="bg-green-500 text-white px-2 py-1 rounded">📖 Leggi</button>
+        <button onclick="editBook('${book.id}', '${book.title}', '${book.author}')" class="bg-yellow-500 text-white px-2 py-1 rounded">✏️ Modifica</button>
+        <button onclick="deleteBook('${book.id}')" class="bg-red-500 text-white px-2 py-1 rounded">🗑️ Elimina</button>
+      </div>
+    </div>
+  `).join("");
+}
+
+// Lettore
+function openReader(url, title) {
+  document.getElementById("reader-title").textContent = title;
+  const readerContent = document.getElementById("reader-content");
+  readerContent.innerHTML = "";
+
+  if (url.toLowerCase().endsWith(".pdf")) {
+    readerContent.innerHTML = `<iframe src="${url}" style="width:100%;height:100%;" frameborder="0"></iframe>`;
+  } else if (url.toLowerCase().endsWith(".epub")) {
+    const book = ePub(url);
+    const rendition = book.renderTo(readerContent, { width: "100%", height: "100%" });
+    rendition.display();
+  } else {
+    readerContent.innerHTML = `<p class="p-4">Formato non supportato.</p>`;
+  }
+
+  document.getElementById("reader-modal").style.display = "flex";
+}
+
+function closeReader() {
+  document.getElementById("reader-modal").style.display = "none";
+  document.getElementById("reader-content").innerHTML = "";
+}
+
+// Upload libro
+document.getElementById("add-book-btn").addEventListener("click", () => {
+  document.getElementById("file-upload").click();
+});
+
+document.getElementById("file-upload").addEventListener("change", async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+
+  const title = prompt("Titolo del libro:");
+  const author = prompt("Autore del libro:");
+
+  let fileName = file.name;
+  if (!fileName.includes(".")) {
+    const ext = file.type.split("/")[1] || "pdf";
+    fileName = `${fileName}.${ext}`;
+  }
+
+  const { error: storageError } = await supabaseClient
+    .storage
+    .from("books-storage")
+    .upload(`${userId}/${fileName}`, file, { upsert: true });
+
+  if (storageError) {
+    alert("Errore upload file: " + storageError.message);
+    return;
+  }
+
+  const fileUrl = supabaseClient
+    .storage
+    .from("books-storage")
+    .getPublicUrl(`${userId}/${fileName}`).data.publicUrl;
+
+  const { error: insertError } = await supabaseClient
+    .from("books")
+    .insert([{ title, author, file_url: fileUrl, user_id: userId }]);
+
+  if (insertError) {
+    alert("Errore salvataggio libro: " + insertError.message);
+    return;
+  }
+
+  fetchBooks();
+});
+
+// Modifica libro
+async function editBook(id, oldTitle, oldAuthor) {
+  const newTitle = prompt("Nuovo titolo:", oldTitle);
+  const newAuthor = prompt("Nuovo autore:", oldAuthor);
+
+  const { error } = await supabaseClient
+    .from("books")
+    .update({ title: newTitle, author: newAuthor })
+    .eq("id", id)
+    .eq("user_id", userId);
+
+  if (error) {
+    alert("Errore modifica: " + error.message);
+    return;
+  }
+  fetchBooks();
+}
+
+// Elimina libro
+async function deleteBook(id) {
+  if (!confirm("Sei sicuro di voler eliminare questo libro?")) return;
+  const { error } = await supabaseClient
+    .from("books")
+    .delete()
+    .eq("id", id)
+    .eq("user_id", userId);
+  if (error) {
+    alert("Errore eliminazione: " + error.message);
+    return;
+  }
+  fetchBooks();
+}
+
+// Ricerca
+document.getElementById("search-bar").addEventListener("input", (e) => {
+  fetchBooks(e.target.value);
+});
+
+// Autenticazione
+document.getElementById("login-btn").onclick = async () => {
+  const email = document.getElementById("email").value;
+  const password = document.getElementById("password").value;
+  const { error } = await supabaseClient.auth.signInWithPassword({ email, password });
+  document.getElementById("auth-message").textContent = error ? error.message : "Login effettuato!";
+};
+
+document.getElementById("register-btn").onclick = async () => {
+  const email = document.getElementById("email").value;
+  const password = document.getElementById("password").value;
+  const { error } = await supabaseClient.auth.signUp({ email, password });
+  document.getElementById("auth-message").textContent = error ? error.message : "Registrazione completata! Controlla la tua email.";
+};
+
+// Logout immediato
+document.getElementById("logout-btn").onclick = async () => {
+  await supabaseClient.auth.signOut();
+  userId = null;
+  document.getElementById("auth-section").classList.remove("hidden");
+  document.getElementById("library-section").classList.add("hidden");
+};
+
+// Stato auth
+supabaseClient.auth.onAuthStateChange((event, session) => {
+  if (session) {
+    userId = session.user.id;
+    document.getElementById("auth-section").classList.add("hidden");
+    document.getElementById("library-section").classList.remove("hidden");
+    fetchBooks();
+  } else {
+    userId = null;
+    document.getElementById("auth-section").classList.remove("hidden");
+    document.getElementById("library-section").classList.add("hidden");
+  }
+});
+</script>
+</body>
+</html>
