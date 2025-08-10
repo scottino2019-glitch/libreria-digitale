@@ -8,12 +8,6 @@
 <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
 <script src="https://cdn.jsdelivr.net/npm/epubjs/dist/epub.min.js"></script>
 
-<!-- 📄 Libreria pdf.js -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-<script>
-  pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
-</script>
-
 <style>
 body {
   background: linear-gradient(135deg, #f5deb3, #deb887);
@@ -79,7 +73,7 @@ body {
     <h2 id="reader-title" class="text-lg font-bold">📖 Lettore</h2>
     <button onclick="closeReader()" class="bg-red-600 px-4 py-1 rounded">Chiudi</button>
   </div>
-  <div id="reader-content" class="p-2"></div>
+  <div id="reader-content"></div>
 </div>
 
 <script>
@@ -134,27 +128,14 @@ function renderBooks(books) {
   `).join("");
 }
 
-// Lettore con pdf.js ed epub.js
+// Lettore
 function openReader(url, title) {
   document.getElementById("reader-title").textContent = title;
   const readerContent = document.getElementById("reader-content");
   readerContent.innerHTML = "";
 
   if (url.toLowerCase().endsWith(".pdf")) {
-    const canvas = document.createElement("canvas");
-    readerContent.appendChild(canvas);
-    const ctx = canvas.getContext("2d");
-
-    pdfjsLib.getDocument(url).promise.then(pdf => {
-      pdf.getPage(1).then(page => {
-        const viewport = page.getViewport({ scale: 1.5 });
-        canvas.height = viewport.height;
-        canvas.width = viewport.width;
-        page.render({ canvasContext: ctx, viewport: viewport });
-      });
-    }).catch(err => {
-      readerContent.innerHTML = `<p class="p-4 text-red-500">Errore caricamento PDF: ${err.message}</p>`;
-    });
+    readerContent.innerHTML = `<iframe src="${url}" style="width:100%;height:100%;" frameborder="0"></iframe>`;
   } else if (url.toLowerCase().endsWith(".epub")) {
     const book = ePub(url);
     const rendition = book.renderTo(readerContent, { width: "100%", height: "100%" });
@@ -167,4 +148,129 @@ function openReader(url, title) {
 }
 
 function closeReader() {
-  document.getElementBy
+  document.getElementById("reader-modal").style.display = "none";
+  document.getElementById("reader-content").innerHTML = "";
+}
+
+// Upload libro
+document.getElementById("add-book-btn").addEventListener("click", () => {
+  document.getElementById("file-upload").click();
+});
+
+document.getElementById("file-upload").addEventListener("change", async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+
+  const title = prompt("Titolo del libro:");
+  const author = prompt("Autore del libro:");
+
+  let fileName = file.name;
+  if (!fileName.includes(".")) {
+    const ext = file.type.split("/")[1] || "pdf";
+    fileName = `${fileName}.${ext}`;
+  }
+
+  const { error: storageError } = await supabaseClient
+    .storage
+    .from("books-storage")
+    .upload(`${userId}/${fileName}`, file, { upsert: true });
+
+  if (storageError) {
+    alert("Errore upload file: " + storageError.message);
+    return;
+  }
+
+  const fileUrl = supabaseClient
+    .storage
+    .from("books-storage")
+    .getPublicUrl(`${userId}/${fileName}`).data.publicUrl;
+
+  const { error: insertError } = await supabaseClient
+    .from("books")
+    .insert([{ title, author, file_url: fileUrl, user_id: userId }]);
+
+  if (insertError) {
+    alert("Errore salvataggio libro: " + insertError.message);
+    return;
+  }
+
+  fetchBooks();
+});
+
+// Modifica libro
+async function editBook(id, oldTitle, oldAuthor) {
+  const newTitle = prompt("Nuovo titolo:", oldTitle);
+  const newAuthor = prompt("Nuovo autore:", oldAuthor);
+
+  const { error } = await supabaseClient
+    .from("books")
+    .update({ title: newTitle, author: newAuthor })
+    .eq("id", id)
+    .eq("user_id", userId);
+
+  if (error) {
+    alert("Errore modifica: " + error.message);
+    return;
+  }
+  fetchBooks();
+}
+
+// Elimina libro
+async function deleteBook(id) {
+  if (!confirm("Sei sicuro di voler eliminare questo libro?")) return;
+  const { error } = await supabaseClient
+    .from("books")
+    .delete()
+    .eq("id", id)
+    .eq("user_id", userId);
+  if (error) {
+    alert("Errore eliminazione: " + error.message);
+    return;
+  }
+  fetchBooks();
+}
+
+// Ricerca
+document.getElementById("search-bar").addEventListener("input", (e) => {
+  fetchBooks(e.target.value);
+});
+
+// Autenticazione
+document.getElementById("login-btn").onclick = async () => {
+  const email = document.getElementById("email").value;
+  const password = document.getElementById("password").value;
+  const { error } = await supabaseClient.auth.signInWithPassword({ email, password });
+  document.getElementById("auth-message").textContent = error ? error.message : "Login effettuato!";
+};
+
+document.getElementById("register-btn").onclick = async () => {
+  const email = document.getElementById("email").value;
+  const password = document.getElementById("password").value;
+  const { error } = await supabaseClient.auth.signUp({ email, password });
+  document.getElementById("auth-message").textContent = error ? error.message : "Registrazione completata! Controlla la tua email.";
+};
+
+// Logout immediato
+document.getElementById("logout-btn").onclick = async () => {
+  await supabaseClient.auth.signOut();
+  userId = null;
+  document.getElementById("auth-section").classList.remove("hidden");
+  document.getElementById("library-section").classList.add("hidden");
+};
+
+// Stato auth
+supabaseClient.auth.onAuthStateChange((event, session) => {
+  if (session) {
+    userId = session.user.id;
+    document.getElementById("auth-section").classList.add("hidden");
+    document.getElementById("library-section").classList.remove("hidden");
+    fetchBooks();
+  } else {
+    userId = null;
+    document.getElementById("auth-section").classList.remove("hidden");
+    document.getElementById("library-section").classList.add("hidden");
+  }
+});
+</script>
+</body>
+</html>
