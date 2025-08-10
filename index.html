@@ -38,6 +38,7 @@ body {
   </div>
   <div id="auth-message" class="mt-4 text-center text-sm text-gray-700"></div>
 </div>
+  
 
 <!-- Biblioteca -->
 <div id="library-section" class="hidden max-w-5xl mx-auto">
@@ -50,6 +51,10 @@ body {
     </div>
   </div>
   <div id="books-list" class="grid grid-cols-1 md:grid-cols-3 gap-4"></div>
+</div>
+<div id="epub-viewer" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:white; z-index:2000;">
+  <button onclick="document.getElementById('epub-viewer').style.display='none'" 
+    class="absolute top-4 right-4 bg-red-500 text-white px-4 py-2 rounded">Chiudi</button>
 </div>
 
 <script>
@@ -84,25 +89,24 @@ async function fetchBooks(search = "") {
 
 // Render libri
 function renderBooks(books) {
-  const container = document.getElementById("books-list");
+  const container = document.getElementById('books-list');
   if (!books.length) {
-    container.innerHTML = `<div class="text-center text-gray-500 col-span-full">Nessun libro trovato</div>`;
+    container.innerHTML = '<div class="col-span-full text-center text-gray-500">Nessun libro trovato</div>';
     return;
   }
   container.innerHTML = books.map(book => `
-    <div class="book-card flex flex-col justify-between">
-      <div>
-        <h3 class="font-bold">${book.title}</h3>
-        <p class="text-sm text-gray-600">${book.author || ""}</p>
-      </div>
-      <div class="flex justify-between mt-4">
-        <a href="${book.file_url}" target="_blank" class="bg-green-500 text-white px-2 py-1 rounded">📖 Leggi</a>
-        <button onclick="editBook('${book.id}', '${book.title}', '${book.author}')" class="bg-yellow-500 text-white px-2 py-1 rounded">✏️ Modifica</button>
-        <button onclick="deleteBook('${book.id}')" class="bg-red-500 text-white px-2 py-1 rounded">🗑️ Elimina</button>
+    <div class="book relative">
+      <div class="font-bold">${book.title}</div>
+      <div class="text-sm mb-2">${book.author}</div>
+      <div class="flex gap-2">
+        <button onclick="openBook('${book.file_url}')" class="bg-yellow-500 text-white px-2 py-1 rounded">📖 Leggi</button>
+        <button onclick="editBook(${book.id})" class="bg-blue-500 text-white px-2 py-1 rounded">✏️ Modifica</button>
+        <button onclick="deleteBook(${book.id})" class="bg-red-500 text-white px-2 py-1 rounded">🗑️ Elimina</button>
       </div>
     </div>
-  `).join("");
+  `).join('');
 }
+
 
 // Upload libro
 document.getElementById("add-book-btn").addEventListener("click", () => {
@@ -172,6 +176,13 @@ async function deleteBook(id) {
   }
   fetchBooks();
 }
+// Open Book
+function openBook(fileUrl) {
+  const viewer = document.getElementById('epub-viewer');
+  viewer.innerHTML = `<iframe src="${fileUrl}" class="w-full h-full" style="border:none;"></iframe>`;
+  viewer.style.display = 'block';
+}
+
 
 // Ricerca
 document.getElementById("search-bar").addEventListener("input", (e) => {
