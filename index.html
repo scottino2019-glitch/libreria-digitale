@@ -22,6 +22,29 @@ body {
 .book-card:hover {
   transform: translateY(-5px);
 }
+#pdf-viewer {
+            width: 100%;
+            height: 70vh;
+            border: 1px solid #ccc;
+        }
+        
+        .pdf-controls {
+            display: flex;
+            justify-content: center;
+            gap: 1rem;
+            margin: 1rem 0;
+        }
+        
+        .pdf-controls button {
+            padding: 0.5rem 1rem;
+        }
+        
+        .empty-shelf {
+            color: var(--color-paper);
+            text-align: center;
+            padding: 2rem;
+            font-style: italic;
+        }
 </style>
 </head>
 
@@ -96,7 +119,23 @@ function renderBooks(books) {
         <p class="text-sm text-gray-600">${book.author || ""}</p>
       </div>
       <div class="flex justify-between mt-4">
-        <a href="${book.file_url}" target="_blank" class="bg-green-500 text-white px-2 py-1 rounded">📖 Leggi</a>
+        <a href="${id="pdf-modal'}" target="_blank" class="bg-green-500 text-white px-2 py-1 rounded">📖 Leggi</a>
+<div class="modal" id="pdf-modal">
+        <div class="modal-content">
+            <button class="close-modal" id="close-modal">&times;</button>
+            <h2 id="modal-title">Titolo del libro</h2>
+            <p id="modal-author">Autore: </p>
+            
+            <div class="pdf-controls">
+                <button id="prev-page"><i class="fas fa-arrow-left"></i> Precedente</button>
+                <span id="page-num">Pagina 1 di 1</span>
+                <button id="next-page">Successiva <i class="fas fa-arrow-right"></i></button>
+                <button id="download-pdf"><i class="fas fa-download"></i> Scarica</button>
+            </div>
+            
+            <canvas id="pdf-canvas"></canvas>
+        </div>
+    </div>
         <button onclick="editBook('${book.id}', '${book.title}', '${book.author}')" class="bg-yellow-500 text-white px-2 py-1 rounded">✏️ Modifica</button>
         <button onclick="deleteBook('${book.id}')" class="bg-red-500 text-white px-2 py-1 rounded">🗑️ Elimina</button>
       </div>
@@ -148,7 +187,103 @@ document.getElementById("file-upload").addEventListener("change", async (e) => {
 
   fetchBooks();
 });
+//PDF reader//
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js"></script>
+    <script>
+        // Inizializza PDF.js
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
 
+        document.addEventListener('DOMContentLoaded', function() {
+            // Elementi DOM
+            const uploadForm = document.getElementById('upload-form');
+            const authorsList = document.getElementById('authors-list');
+            const booksGrid = document.getElementById('books-grid');
+            const shelfTitle = document.getElementById('shelf-title');
+            const pdfModal = document.getElementById('pdf-modal');
+            const closeModal = document.getElementById('close-modal');
+            const modalTitle = document.getElementById('modal-title');
+            const modalAuthor = document.getElementById('modal-author');
+            const prevPageBtn = document.getElementById('prev-page');
+            const nextPageBtn = document.getElementById('next-page');
+            const pageNumSpan = document.getElementById('page-num');
+            const downloadPdfBtn = document.getElementById('download-pdf');
+            const statsBooks = document.getElementById('stats-books');
+            const statsAuthors = document.getElementById('stats-authors');
+            
+            // Variabili per la gestione del PDF
+            let currentPdf = null;
+            let currentPage = 1;
+            let currentPdfData = null;
+            let pageRendering = false;
+            let pageNumPending = null;
+            let pdfScale = 1.5;
+            
+            // Dati della libreria
+            let library = JSON.parse(localStorage.getItem('digitalLibrary')) || {};
+            let currentAuthor = 'all';
+            
+            // Inizializza la libreria
+            initializeLibrary();
+            updateStats();
+            
+            // Gestione invio form
+            uploadForm.addEventListener('submit', function(e) {
+                e.preventDefault();
+                
+                const author = document.getElementById('author').value.trim();
+                const title = document.getElementById('title').value.trim();
+                const fileInput = document.getElementById('pdf-file');
+                const file = fileInput.files[0];
+                
+                if (author && title && file) {
+                    // Leggi il file come URL
+                    const reader = new FileReader();
+                    reader.onload = function(e) {
+                        addBookToLibrary(author, title, e.target.result);
+                        uploadForm.reset();
+                    };
+                    reader.readAsDataURL(file);
+                }
+            });
+            
+            // Chiudi il modal
+            closeModal.addEventListener('click', function() {
+                pdfModal.style.display = 'none';
+                currentPdf = null;
+            });
+            
+            // Chiudi il modal cliccando fuori
+            window.addEventListener('click', function(e) {
+                if (e.target === pdfModal) {
+                    pdfModal.style.display = 'none';
+                    currentPdf = null;
+                }
+            });
+            
+            // Navigazione tra le pagine del PDF
+            prevPageBtn.addEventListener('click', function() {
+                if (currentPdf && currentPage > 1) {
+                    currentPage--;
+                    queueRenderPage(currentPage);
+                }
+            });
+            
+            nextPageBtn.addEventListener('click', function() {
+                if (currentPdf && currentPage < currentPdf.numPages) {
+                    currentPage++;
+                    queueRenderPage(currentPage);
+                }
+            });
+            
+            // Download del PDF
+            downloadPdfBtn.addEventListener('click', function() {
+                if (currentPdfData) {
+                    const link = document.createElement('a');
+                    link.href = currentPdfData;
+                    link.download = `${modalTitle.textContent}.pdf`;
+                    link.click();
+                }
+            });
 // Modifica libro
 async function editBook(id, oldTitle, oldAuthor) {
   const newTitle = prompt("Nuovo titolo:", oldTitle);
